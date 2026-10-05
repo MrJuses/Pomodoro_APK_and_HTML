@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Focus Taper</title>
+<link id="fav" rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@300;500&family=Instrument+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one centred column — clock on top, the plan as a proportional timeline, plan picker and settings below. */
+:root{
+  --bg:#EDF1F2; --surface:#FFFFFF; --fg:#13202A; --muted:#5A6B74; --line:#D2DADE;
+  --work:#C93A55; --break:#1E8A6E; --long:#3D58D6;
+  --phase:var(--work);
+  --f-body:"Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-num:"Azeret Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1519; --surface:#162127; --fg:#E4ECEF; --muted:#8C9EA6; --line:#25343B;
+    --work:#F06B83; --break:#3CC29D; --long:#8296F6; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1519; --surface:#162127; --fg:#E4ECEF; --muted:#8C9EA6; --line:#25343B;
+  --work:#F06B83; --break:#3CC29D; --long:#8296F6; color-scheme:dark;
+}
+body[data-phase="break"]{--phase:var(--break)}
+body[data-phase="long"]{--phase:var(--long)}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg); color:var(--fg); font:15px/1.5 var(--f-body); padding-inline:16px; padding-block:24px 48px}
+.wrap{max-width:860px; margin:0 auto; display:flex; flex-direction:column; gap:28px}
+button,input{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--phase); outline-offset:2px}
+
+header{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap}
+.brand{font-weight:700; letter-spacing:.01em; font-size:1.05rem}
+.kbd{color:var(--muted); font-size:.82rem}
+kbd{font-family:var(--f-num); font-size:.75rem; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; background:var(--surface)}
+
+/* Clock */
+.clock{display:flex; flex-direction:column; align-items:center; gap:14px; padding-block:12px 4px; text-align:center}
+.chip{display:inline-flex; align-items:center; gap:8px; font-size:.78rem; font-weight:600; text-transform:uppercase; letter-spacing:.09em; color:var(--phase)}
+.chip::before{content:""; width:9px; height:9px; border-radius:50%; background:var(--phase)}
+body.running .chip::before{animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+.digits{font-family:var(--f-num); font-weight:300; font-size:clamp(4.6rem, 19vw, 9.5rem); line-height:1; letter-spacing:-.04em; font-variant-numeric:tabular-nums}
+.bar{width:min(100%, 520px); height:4px; background:var(--line); border-radius:2px; overflow:hidden}
+.bar i{display:block; height:100%; width:0; background:var(--phase); transition:width .25s linear}
+.meta{color:var(--muted); font-size:.9rem; display:flex; gap:6px 18px; flex-wrap:wrap; justify-content:center; font-variant-numeric:tabular-nums}
+.meta b{color:var(--fg); font-weight:600}
+
+.controls{display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:4px}
+.btn{border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:9px 18px; cursor:pointer; font-weight:500}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--phase); border-color:var(--phase); color:#fff; font-weight:600; min-width:120px}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.small{padding:9px 13px; font-family:var(--f-num); font-size:.85rem}
+
+/* Timeline */
+.timeline{display:flex; flex-direction:column; gap:8px}
+.track{display:flex; gap:3px; height:44px}
+.seg{position:relative; flex-basis:0; min-width:6px; border:0; padding:0; cursor:pointer; border-radius:4px; overflow:hidden; background:color-mix(in srgb, var(--c) 22%, var(--surface))}
+.seg[data-t="work"]{--c:var(--work)} .seg[data-t="break"]{--c:var(--break)} .seg[data-t="long"]{--c:var(--long)}
+.seg .fill{position:absolute; inset:0 auto 0 0; width:0; background:var(--c)}
+.seg.past .fill{width:100%; opacity:.4}
+.seg.now{box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--c)}
+.seg span{position:relative; font-family:var(--f-num); font-size:.72rem; font-weight:500; color:var(--fg); mix-blend-mode:normal}
+.legend{display:flex; gap:16px; flex-wrap:wrap; color:var(--muted); font-size:.8rem}
+.legend span::before{content:""; display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; background:var(--c)}
+.legend .w{--c:var(--work)} .legend .b{--c:var(--break)} .legend .l{--c:var(--long)}
+
+/* Plans */
+h2{font-size:.78rem; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:0 0 10px; font-weight:600}
+.plans{display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px}
+.plan{text-align:left; border:1px solid var(--line); background:var(--surface); border-radius:10px; padding:12px 14px; cursor:pointer; display:flex; flex-direction:column; gap:8px; min-width:0}
+.plan > *, .seg > *{pointer-events:none}
+.plan:hover{border-color:var(--muted)}
+.plan[aria-pressed="true"]{border-color:var(--fg); box-shadow:inset 0 0 0 1px var(--fg)}
+.plan .name{font-weight:600}
+.plan .sub{font-family:var(--f-num); font-size:.78rem; color:var(--muted)}
+.mini{display:flex; gap:2px; height:8px}
+.mini i{flex-basis:0; border-radius:1px}
+.mini i[data-t="work"]{background:var(--work)} .mini i[data-t="break"]{background:var(--break)} .mini i[data-t="long"]{background:var(--long)}
+.note{color:var(--muted); font-size:.82rem; margin:8px 0 0}
+
+.custom{border:1px solid var(--line); background:var(--surface); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px; margin-top:10px}
+.custom[data-active="true"]{border-color:var(--fg); box-shadow:inset 0 0 0 1px var(--fg)}
+.row{display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end}
+label.f{display:flex; flex-direction:column; gap:4px; font-size:.8rem; color:var(--muted)}
+label.f input{width:92px; padding:7px 9px; border:1px solid var(--line); border-radius:6px; background:var(--bg); font-family:var(--f-num); font-size:.95rem}
+.toggle{display:flex; align-items:center; gap:8px; font-size:.9rem; cursor:pointer}
+.toggle input{width:16px; height:16px; accent-color:var(--fg)}
+.settings{display:flex; gap:16px 24px; flex-wrap:wrap; align-items:flex-end}
+
+@media (prefers-reduced-motion: reduce){ *{animation:none!important; transition:none!important} }
+</style>
+</head>
+<body data-phase="work">
+<div class="wrap">
+  <header>
+    <div class="brand">Focus Taper <span id="planLabel" style="color:var(--muted);font-weight:500"></span></div>
+    <div class="kbd"><kbd>Space</kbd> start / pause &nbsp; <kbd>N</kbd> next &nbsp; <kbd>R</kbd> restart block</div>
+  </header>
+
+  <section class="clock" aria-live="off">
+    <div class="chip" id="chip">Work</div>
+    <div class="digits" id="digits">00:00</div>
+    <div class="bar"><i id="prog"></i></div>
+    <div class="meta"><span id="next"></span><span id="ends"></span></div>
+    <div class="controls">
+      <button class="btn small" id="minus" title="Remove one minute">−1</button>
+      <button class="btn primary" id="toggle">Start</button>
+      <button class="btn" id="skip">Next</button>
+      <button class="btn small" id="plus" title="Add one minute">+1</button>
+      <button class="btn" id="reset">Reset plan</button>
+    </div>
+  </section>
+
+  <section class="timeline">
+    <div class="track" id="track"></div>
+    <div class="legend"><span class="w">Work</span><span class="b">Break</span><span class="l">Long break</span><span>Click a block to jump to it</span></div>
+  </section>
+
+  <section>
+    <h2>Tapering</h2>
+    <div class="plans" id="plans-taper"></div>
+    <h2 style="margin-top:20px">Classic</h2>
+    <div class="plans" id="plans-classic"></div>
+    <div class="custom" id="customBox">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div><div style="font-weight:600">Custom</div><div class="plan sub" style="all:unset;font-family:var(--f-num);font-size:.78rem;color:var(--muted)" id="customSub"></div></div>
+        <button class="btn" id="useCustom">Use custom</button>
+      </div>
+      <div class="mini" id="customMini"></div>
+      <div class="row">
+        <label class="f">Work (min)<input id="cw" type="number" min="1" max="240"></label>
+        <label class="f">Break (min)<input id="cb" type="number" min="0" max="120"></label>
+        <label class="f">Repeat ×<input id="cn" type="number" min="1" max="20"></label>
+      </div>
+    </div>
+    <p class="note">Switching plans resets the timer. The long break replaces the final break in every plan; set it to 0 to end on the last work block.</p>
+  </section>
+
+  <section>
+    <h2>Settings</h2>
+    <div class="settings">
+      <label class="f">Long break (min)<input id="long" type="number" min="0" max="180"></label>
+      <label class="f">Taper break (min)<input id="tb" type="number" min="0" max="60"></label>
+      <label class="toggle"><input id="auto" type="checkbox"> Auto-start next block</label>
+      <label class="toggle"><input id="sound" type="checkbox"> Chime</label>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const store = {
+    get(k, d){ try { const v = localStorage.getItem('focustaper:' + k); return v == null ? d : JSON.parse(v); } catch(e){ return d; } },
+    set(k, v){ try { localStorage.setItem('focustaper:' + k, JSON.stringify(v)); } catch(e){} }
+  };
+
+  const cfg = Object.assign({ plan:'taper60', long:20, tb:10, cw:45, cb:10, cn:3, auto:true, sound:true }, store.get('cfg', {}));
+
+  // ---- Plan builders ------------------------------------------------------
+  function cycles(w, b, n){
+    const s = [];
+    for (let i = 0; i < n; i++){
+      s.push({ t:'work', m:w });
+      if (i < n - 1){ if (b > 0) s.push({ t:'break', m:b }); }
+      else if (cfg.long > 0) s.push({ t:'long', m:cfg.long });
+    }
+    return s;
+  }
+  function taper(start){
+    const s = [];
+    for (let m = start; m >= 10; m -= 10){
+      s.push({ t:'work', m });
+      if (m > 10){ if (cfg.tb > 0) s.push({ t:'break', m:cfg.tb }); }
+      else if (cfg.long > 0) s.push({ t:'long', m:cfg.long });
+    }
+    return s;
+  }
+  const PLANS = {
+    taper60: { g:'taper',   name:'Full day',   sub:'60·50·40·30·20·10', build:() => taper(60) },
+    taper50: { g:'taper',   name:'Easy start', sub:'50·40·30·20·10',    build:() => taper(50) },
+    classic: { g:'classic', name:'Pomodoro',   sub:'25/5 × 4',          build:() => cycles(25, 5, 4) },
+    deep:    { g:'classic', name:'Deep work',  sub:'50/10 × 3',         build:() => cycles(50, 10, 3) },
+    ultra:   { g:'classic', name:'Ultradian',  sub:'90/20 × 2',         build:() => cycles(90, 20, 2) },
+    custom:  { g:'custom',  name:'Custom',     sub:'',                  build:() => cycles(cfg.cw, cfg.cb, cfg.cn) }
+  };
+  if (!PLANS[cfg.plan]) cfg.plan = 'taper60';
+
+  const fmtDur = m => { m = Math.round(m); const h = Math.floor(m / 60), r = m % 60; return h ? (r ? `${h}h ${r}m` : `${h}h`) : `${r}m`; };
+  const total = segs => segs.reduce((a, s) => a + s.m, 0);
+  const label = t => t === 'work' ? 'Work' : t === 'break' ? 'Break' : 'Long break';
+
+  // ---- Timer state --------------------------------------------------------
+  let segs = PLANS[cfg.plan].build();
+  const full = i => segs[i].m * 60000;
+  let st = store.get('st', null);
+  if (!st || st.plan !== cfg.plan || st.idx >= segs.length) st = fresh();
+  function fresh(){ return { plan:cfg.plan, idx:0, rem:full(0), len:full(0), endAt:null, done:false }; }
+  const running = () => st.endAt != null;
+  const remaining = () => running() ? Math.max(0, st.endAt - Date.now()) : st.rem;
+  const save = () => { store.set('st', st); store.set('cfg', cfg); };
+
+  function start(){ if (st.done){ st = fresh(); } unlockAudio(); st.endAt = Date.now() + st.rem; save(); renderAll(); }
+  function pause(){ st.rem = remaining(); st.endAt = null; save(); renderAll(); }
+  function toggle(){ running() ? pause() : start(); }
+
+  // fromEnd: chain from the scheduled end time (no drift, and catches up after the tab was closed)
+  function advance(fromEnd){
+    const was = running(), prevEnd = st.endAt;
+    if (st.idx >= segs.length - 1){ st.done = true; st.endAt = null; st.rem = 0; return; }
+    st.idx++; st.rem = st.len = full(st.idx);
+    st.endAt = (was && cfg.auto) ? (fromEnd ? prevEnd : Date.now()) + st.rem : null;
+  }
+  function skip(){ if (st.done) return; if (running()) st.rem = remaining(); advance(false); chime(); save(); renderAll(); }
+  function jump(i){ const was = running(); st.idx = i; st.done = false; st.rem = st.len = full(i); st.endAt = was ? Date.now() + st.rem : null; save(); renderAll(); }
+  function restartBlock(){ if (st.done) return; st.rem = st.len = full(st.idx); if (running()) st.endAt = Date.now() + st.rem; save(); renderAll(); }
+  function adjust(min){
+    if (st.done) return;
+    const d = min * 60000;
+    if (running()){ st.endAt = Math.max(Date.now() + 1000, st.endAt + d); }
+    else st.rem = Math.max(1000, st.rem + d);
+    st.len = Math.max(st.len + d, remaining()); save(); renderAll();
+  }
+
+  function tick(){
+    if (running() && Date.now() >= st.endAt){
+      let n = 0;
+      while (running() && Date.now() >= st.endAt && n++ < 100) advance(true);
+      chime(); save(); renderAll();
+    } else renderClock();
+  }
+
+  // Rebuild after a settings change without losing progress in the current block
+  function rebuild(){
+    const old = segs[st.idx];
+    segs = PLANS[cfg.plan].build();
+    if (st.idx >= segs.length){ st = fresh(); }
+    else {
+      const untouched = !running() && st.rem === st.len;
+      const now = segs[st.idx];
+      if (now.t !== old.t) st = fresh();
+      else if (untouched && !st.done){ st.rem = st.len = full(st.idx); }
+    }
+    save(); renderAll();
+  }
+  function selectPlan(k){ cfg.plan = k; segs = PLANS[k].build(); st = fresh(); save(); renderAll(); }
+
+  // ---- Audio --------------------------------------------------------------
+  let ac = null;
+  function unlockAudio(){ try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch(e){} }
+  function chime(){
+    if (!cfg.sound || !ac) return;
+    const t = st.done ? 'done' : segs[st.idx].t;
+    const notes = { work:[523, 659, 784], break:[784, 659, 523], long:[659, 523, 392, 523], done:[523, 659, 784, 1047] }[t];
+    const t0 = ac.currentTime + .02;
+    notes.forEach((f, i) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      const s = t0 + i * .22;
+      g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(.28, s + .02); g.gain.exponentialRampToValueAtTime(.001, s + .6);
+      o.connect(g).connect(ac.destination); o.start(s); o.stop(s + .65);
+    });
+  }
+
+  // ---- Rendering ----------------------------------------------------------
+  const pad = n => String(n).padStart(2, '0');
+  const mmss = ms => { const s = Math.ceil(ms / 1000); return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`; };
+  const PHASE_HEX = { work:'#C93A55', break:'#1E8A6E', long:'#3D58D6' };
+  let lastTitle = '', lastFav = '';
+
+  function workPos(){
+    let n = 0, of = 0;
+    segs.forEach((s, i) => { if (s.t === 'work'){ of++; if (i <= st.idx) n++; } });
+    return [n, of];
+  }
+
+  function renderClock(){
+    const seg = segs[st.idx], rem = remaining();
+    document.body.dataset.phase = st.done ? 'long' : seg.t;
+    document.body.classList.toggle('running', running());
+    $('#digits').textContent = st.done ? '00:00' : mmss(rem);
+    $('#prog').style.width = (st.done ? 100 : Math.min(100, (1 - rem / st.len) * 100)) + '%';
+    const nowFill = document.querySelector('.seg.now .fill');
+    if (nowFill) nowFill.style.width = (st.done ? 100 : Math.min(100, (1 - rem / st.len) * 100)) + '%';
+
+    let title;
+    if (st.done) title = 'Done · Focus Taper';
+    else title = `${running() ? '' : '‖ '}${mmss(rem)} ${label(seg.t)}`;
+    if (title !== lastTitle){ document.title = title; lastTitle = title; }
+    drawFavicon(seg, rem);
+
+    const left = st.done ? 0 : rem + segs.slice(st.idx + 1).reduce((a, s) => a + s.m * 60000, 0);
+    $('#ends').innerHTML = st.done ? '' : running()
+      ? `Plan ends ≈ <b>${new Date(Date.now() + left).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</b>`
+      : `<b>${fmtDur(left / 60000)}</b> left in plan`;
+  }
+
+  function renderAll(){
+    const seg = segs[st.idx], [wn, wof] = workPos();
+    $('#planLabel').textContent = '· ' + PLANS[cfg.plan].name;
+    $('#chip').textContent = st.done ? 'Plan complete' : seg.t === 'work' ? `Work · ${wn} of ${wof}` : label(seg.t);
+    const nx = segs[st.idx + 1];
+    $('#next').innerHTML = st.done ? 'Press Start to run it again' : nx ? `Next: <b>${label(nx.t)} ${nx.m} min</b>` : 'Last block';
+    $('#toggle').textContent = st.done ? 'Restart' : running() ? 'Pause' : (st.rem < st.len ? 'Resume' : 'Start');
+
+    const track = $('#track'); track.innerHTML = '';
+    segs.forEach((s, i) => {
+      const b = document.createElement('button');
+      b.className = 'seg' + (i < st.idx || (st.done && i === st.idx) ? ' past' : '') + (i === st.idx && !st.done ? ' now' : '');
+      b.dataset.t = s.t; b.style.flexGrow = s.m;
+      b.title = `${label(s.t)} · ${s.m} min`;
+      b.setAttribute('aria-label', `Jump to ${label(s.t)} ${s.m} minutes`);
+      b.innerHTML = `<div class="fill"></div>${s.m >= 15 ? `<span>${s.m}</span>` : ''}`;
+      b.onclick = () => jump(i);
+      track.appendChild(b);
+    });
+
+    ['taper', 'classic'].forEach(g => {
+      const box = $('#plans-' + g);
+      Object.entries(PLANS).filter(([, p]) => p.g === g).forEach(([k, p]) => {
+        const s = p.build();
+        // keep the button node itself stable, so a click that follows an input's blur/change isn't swallowed
+        let b = box.querySelector(`[data-k="${k}"]`);
+        if (!b){ b = document.createElement('button'); b.className = 'plan'; b.dataset.k = k; b.onclick = () => selectPlan(k); box.appendChild(b); }
+        b.setAttribute('aria-pressed', k === cfg.plan);
+        b.innerHTML = `<div class="name">${p.name}</div><div class="sub">${p.sub} · ${fmtDur(total(s))}</div><div class="mini">${s.map(x => `<i data-t="${x.t}" style="flex-grow:${x.m}"></i>`).join('')}</div>`;
+      });
+    });
+    const cs = PLANS.custom.build();
+    $('#customBox').dataset.active = cfg.plan === 'custom';
+    $('#customSub').textContent = `${cfg.cw}/${cfg.cb} × ${cfg.cn}${cfg.long ? ` + long ${cfg.long}` : ''} · ${fmtDur(total(cs))}`;
+    $('#customMini').innerHTML = cs.map(x => `<i data-t="${x.t}" style="flex-grow:${x.m}"></i>`).join('');
+    $('#useCustom').textContent = cfg.plan === 'custom' ? 'In use' : 'Use custom';
+    renderClock();
+  }
+
+  // Favicon: progress ring + minutes left, so a pinned tab still shows the countdown
+  const fc = document.createElement('canvas'); fc.width = fc.height = 64;
+  function drawFavicon(seg, rem){
+    const mins = st.done ? '✓' : String(Math.ceil(rem / 60000));
+    const p = st.done ? 1 : Math.min(1, 1 - rem / st.len);
+    const key = mins + '|' + Math.round(p * 40) + '|' + (st.done ? 'd' : seg.t) + running();
+    if (key === lastFav) return; lastFav = key;
+    const c = fc.getContext('2d'), col = PHASE_HEX[st.done ? 'long' : seg.t];
+    c.clearRect(0, 0, 64, 64);
+    c.beginPath(); c.arc(32, 32, 30, 0, Math.PI * 2); c.fillStyle = col; c.fill();
+    c.beginPath(); c.arc(32, 32, 25, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p); c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 6; c.stroke();
+    c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = `bold ${mins.length > 2 ? 22 : 28}px system-ui, sans-serif`;
+    c.fillText(running() || st.done ? mins : '‖', 32, 34);
+    $('#fav').href = fc.toDataURL('image/png');
+  }
+
+  // ---- Inputs -------------------------------------------------------------
+  const clamp = (v, lo, hi, d) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+  const bindNum = (id, key, lo, hi, affects) => {
+    const el = $('#' + id); el.value = cfg[key];
+    el.addEventListener('change', () => {
+      cfg[key] = clamp(el.value, lo, hi, cfg[key]); el.value = cfg[key];
+      affects() ? rebuild() : (save(), renderAll());
+    });
+  };
+  bindNum('long', 'long', 0, 180, () => true);
+  bindNum('tb', 'tb', 0, 60, () => PLANS[cfg.plan].g === 'taper');
+  bindNum('cw', 'cw', 1, 240, () => cfg.plan === 'custom');
+  bindNum('cb', 'cb', 0, 120, () => cfg.plan === 'custom');
+  bindNum('cn', 'cn', 1, 20, () => cfg.plan === 'custom');
+  $('#auto').checked = cfg.auto; $('#auto').onchange = e => { cfg.auto = e.target.checked; save(); };
+  $('#sound').checked = cfg.sound; $('#sound').onchange = e => { cfg.sound = e.target.checked; if (cfg.sound){ unlockAudio(); chime(); } save(); };
+  $('#useCustom').onclick = () => selectPlan('custom');
+  $('#toggle').onclick = toggle;
+  $('#skip').onclick = skip;
+  $('#reset').onclick = () => { st = fresh(); save(); renderAll(); };
+  $('#plus').onclick = () => adjust(1);
+  $('#minus').onclick = () => adjust(-1);
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('input')) return;
+    if (e.code === 'Space'){ e.preventDefault(); toggle(); }
+    else if (e.key === 'n' || e.key === 'N') skip();
+    else if (e.key === 'r' || e.key === 'R') restartBlock();
+  });
+
+  // ---- Clock source -------------------------------------------------------
+  // Browsers throttle timers in background tabs (Chrome can drop to once a minute),
+  // which would freeze the tab title. A worker's timer isn't throttled the same way.
+  let lastRender = 0;
+  const onTick = () => { const n = Date.now(); if (n - lastRender >= 200){ lastRender = n; tick(); } };
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(0),250)'], { type:'text/javascript' })));
+    w.onmessage = onTick;
+  } catch(e){}
+  setInterval(onTick, 250);
+  document.addEventListener('visibilitychange', tick);
+  document.addEventListener('pointerdown', unlockAudio, { once:true });
+
+  tick(); renderAll();
+})();
+</script>
+</body>
+</html>
